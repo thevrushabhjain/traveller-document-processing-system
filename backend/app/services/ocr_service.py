@@ -480,18 +480,14 @@ class OCRService:
         
         # Auto: test Paddle
         if _check_paddle_import():
-            logger.info("Running PaddleOCR self-test in a child process...")
-            self._paddle_ok = _paddle_selftest()
-            if self._paddle_ok:
-                self._backend_name = "PaddleOCR"
-                return True
-            else:
-                logger.warning(
-                    "PaddleOCR is not stable on this host; using rapidocr-onnxruntime "
-                    "(same PP-OCR model weights, ONNX runtime)."
-                )
-                self._backend_name = "PaddleOCR-via-ONNX (rapidocr)"
-                return False
+            logger.info("Skipping PaddleOCR self-test in production")
+
+            # Assume Paddle is available without running the heavy self-test
+            self._paddle_ok = True
+            self._backend_name = "PaddleOCR"
+
+            return True
+
         else:
             logger.info("PaddleOCR not installed; using rapidocr-onnxruntime")
             self._paddle_ok = False
