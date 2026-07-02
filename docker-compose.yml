@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: traveldocs
+      POSTGRES_PASSWORD: traveldocs
+      POSTGRES_DB: traveldocs
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://traveldocs:traveldocs@db:5432/traveldocs
+      APP_NAME: Traveller Document Processing System
+      LOG_LEVEL: INFO
+      OCR_LANGUAGES: en,hi
+      CORS_ORIGINS: "*"
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app/uploads:/app/app/uploads
+      - ./backend/app/outputs:/app/app/outputs
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:

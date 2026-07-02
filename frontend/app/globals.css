@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  background: #FAFAFA;
+  color: #09090B;
+  font-family: var(--font-karla), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom selection */
+::selection {
+  background: #0055FF;
+  color: #FFFFFF;
+}
+
+/* Blueprint grid backdrop used by hero and empty states */
+.blueprint-grid {
+  background-image:
+    linear-gradient(rgba(9,9,11,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(9,9,11,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.blueprint-grid-dense {
+  background-image:
+    linear-gradient(rgba(9,9,11,0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(9,9,11,0.08) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+.stamp-overlay {
+  background:
+    radial-gradient(circle at 15% 25%, rgba(0,85,255,0.06), transparent 40%),
+    radial-gradient(circle at 80% 60%, rgba(9,9,11,0.05), transparent 45%);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #F4F4F5; }
+::-webkit-scrollbar-thumb { background: #D4D4D8; }
+::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }
+
+/* Focus outline (Swiss-style, sharp) */
+*:focus-visible {
+  outline: 2px solid #0055FF;
+  outline-offset: 2px;
+}
+
+.data-label {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #52525B;
+}
+
+.data-value {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  color: #09090B;
+  word-break: break-word;
+}
+
+.stripe-diagonal {
+  background: repeating-linear-gradient(
+    45deg,
+    #F4F4F5,
+    #F4F4F5 8px,
+    #FFFFFF 8px,
+    #FFFFFF 16px
+  );
+}
+
+/* Simple animated indeterminate bar */
+@keyframes trackSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.progress-indeterminate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #0055FF;
+  width: 40%;
+  animation: trackSlide 1.2s linear infinite;
+}
+
+/* Micro entrance */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp .35s ease-out both; }
