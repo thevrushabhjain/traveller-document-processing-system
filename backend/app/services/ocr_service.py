@@ -69,9 +69,14 @@ def _paddle_selftest() -> bool:
                 stderr,
             )
         return ok
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("PaddleOCR self-test raised: %s", exc)
-        return False
+    except Exception:
+        if self._backend_name == "PaddleOCR":
+            logger.warning("Paddle failed. Switching to RapidOCR.")
+
+            self._engines[lang] = _RapidEngine(lang)
+            tokens_lang = self._engines[lang].run(preprocessed)
+        else:
+            raise
 
 
 def _check_paddle_import() -> bool:
@@ -447,7 +452,10 @@ class OCRService:
             self._orientation_mode = "auto"
 
     # -----------------------------------------------------------------
-    def _paddle_available(self) -> bool:
+    def _paddle_available(self):
+        self._paddle_ok = False
+        self._backend_name = "PaddleOCR-via-ONNX (rapidocr)"
+        return False
         if self._paddle_ok is not None:
             return self._paddle_ok
         

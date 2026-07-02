@@ -1,3 +1,4 @@
+// frontend/components/ExtractedData.js
 'use client';
 
 import { ConfidenceBadge } from './ConfidenceBadge';
@@ -22,6 +23,23 @@ const FIELDS = [
   { key: 'mrz_line2', label: 'MRZ Line 2', wide: true, mono: true },
 ];
 
+const BUSINESS_CARD_FIELDS = [
+  { key: 'full_name', label: 'Full Name' },
+  { key: 'company_name', label: 'Company Name' },
+  { key: 'designation', label: 'Designation' },
+  { key: 'email', label: 'Email' },
+  { key: 'mobile_number', label: 'Mobile Number' },
+  { key: 'office_number', label: 'Office Number' },
+  { key: 'website', label: 'Website' },
+  { key: 'address', label: 'Address', wide: true },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+  { key: 'country', label: 'Country' },
+  { key: 'pin_code', label: 'PIN Code' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'qr_code_content', label: 'QR Code Content', wide: true, mono: true },
+];
+
 function Cell({ label, field, wide, mono, testKey }) {
   const value = field?.value;
   return (
@@ -43,33 +61,38 @@ function Cell({ label, field, wide, mono, testKey }) {
   );
 }
 
-export default function ExtractedData({ result }) {
-  if (!result) return null;
-  const t = result.traveller || {};
-  const validations = result.validation || [];
-  const extras = Object.entries(t.additional_fields || {}).filter(([, v]) => v?.value);
-
+function BusinessCardDataView({ data }) {
+  const extras = Object.entries(data?.additional_fields || {}).filter(([, v]) => v?.value);
+  
   return (
-    <section className="space-y-4" data-testid="extracted-data-section">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-3">
-        <div>
-          <p className="data-label">Extracted Traveller Data</p>
-          <h2 className="mt-1 font-sans text-2xl font-semibold tracking-tight">
-            {result.filename}
-          </h2>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      {BUSINESS_CARD_FIELDS.map((f) => (
+        <Cell key={f.key} label={f.label} field={data?.[f.key]} wide={f.wide} mono={f.mono} testKey={`bc-${f.key}`} />
+      ))}
+      {extras.length > 0 && (
+        <div className="sm:col-span-2 lg:col-span-3 border-t border-border">
+          <div className="border-b border-border bg-surfaceMuted px-3 py-2">
+            <p className="data-label">Additional Fields</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {extras.map(([key, field]) => (
+              <Cell key={key} label={key.replace(/_/g, ' ')} field={field} testKey={`bc-extra-${key}`} />
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="border border-ink bg-ink px-2 py-1 font-mono text-[11px] uppercase tracking-widest text-white" data-testid="document-type-badge">
-            {result.document_type}
-          </span>
-          <ConfidenceBadge value={result.classification_confidence} testId="classification-confidence-badge" />
-          <ConfidenceBadge value={result.overall_confidence} testId="overall-confidence-badge" />
-        </div>
-      </header>
+      )}
+    </div>
+  );
+}
 
+function TravellerDataView({ data, validations }) {
+  const extras = Object.entries(data?.additional_fields || {}).filter(([, v]) => v?.value);
+  
+  return (
+    <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {FIELDS.map((f) => (
-          <Cell key={f.key} label={f.label} field={t[f.key]} wide={f.wide} mono={f.mono} testKey={f.key} />
+          <Cell key={f.key} label={f.label} field={data?.[f.key]} wide={f.wide} mono={f.mono} testKey={f.key} />
         ))}
       </div>
 
@@ -86,7 +109,7 @@ export default function ExtractedData({ result }) {
         </div>
       )}
 
-      {validations.length > 0 && (
+      {validations?.length > 0 && (
         <div className="border border-border" data-testid="validation-issues">
           <div className="border-b border-border bg-surfaceMuted px-3 py-2">
             <p className="data-label">Validation Issues</p>
@@ -113,6 +136,44 @@ export default function ExtractedData({ result }) {
             ))}
           </ul>
         </div>
+      )}
+    </>
+  );
+}
+
+export default function ExtractedData({ result }) {
+  if (!result) return null;
+  
+  const isBusinessCard = result.document_type === 'BUSINESS_CARD';
+  const data = isBusinessCard ? result.business_card : result.traveller;
+  const validations = result.validation || [];
+  
+  if (!data) return null;
+
+  return (
+    <section className="space-y-4" data-testid="extracted-data-section">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-3">
+        <div>
+          <p className="data-label">
+            {isBusinessCard ? 'Extracted Business Card Data' : 'Extracted Traveller Data'}
+          </p>
+          <h2 className="mt-1 font-sans text-2xl font-semibold tracking-tight">
+            {result.filename}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="border border-ink bg-ink px-2 py-1 font-mono text-[11px] uppercase tracking-widest text-white" data-testid="document-type-badge">
+            {result.document_type}
+          </span>
+          <ConfidenceBadge value={result.classification_confidence} testId="classification-confidence-badge" />
+          <ConfidenceBadge value={result.overall_confidence} testId="overall-confidence-badge" />
+        </div>
+      </header>
+
+      {isBusinessCard ? (
+        <BusinessCardDataView data={data} />
+      ) : (
+        <TravellerDataView data={data} validations={validations} />
       )}
     </section>
   );

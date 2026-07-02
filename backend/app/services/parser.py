@@ -1,14 +1,16 @@
+# parser.py
 """Central parser that dispatches to the right extractor and normalises data."""
 from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from dateutil import parser as dateparser
 
-from ..schemas import DocumentType, FieldValue, OCRToken, TravellerData
+from ..schemas import BusinessCardData, DocumentType, FieldValue, OCRToken, TravellerData
 from ..extractors import aadhaar as aadhaar_extractor
+from ..extractors import business_card as business_card_extractor
 from ..extractors import driving_license as driving_license_extractor
 from ..extractors import generic as generic_extractor
 from ..extractors import pan as pan_extractor
@@ -23,14 +25,28 @@ _EXTRACTORS = {
     DocumentType.DRIVING_LICENSE: driving_license_extractor.extract,
     DocumentType.PAN: pan_extractor.extract,
     DocumentType.VOTER_ID: voter_id_extractor.extract,
+    DocumentType.BUSINESS_CARD: business_card_extractor.extract,
 }
 
 
-def parse(tokens: List[OCRToken], document_type: DocumentType) -> TravellerData:
-    """Return a normalised :class:`TravellerData` for the given OCR tokens."""
+def parse(tokens: List[OCRToken], document_type: DocumentType) -> Union[TravellerData, BusinessCardData]:
+    """Return structured data for the given document type.
+    
+    Args:
+        tokens: OCR tokens extracted from the document
+        document_type: Classified document type
+    
+    Returns:
+        TravellerData for identity documents, BusinessCardData for business cards
+    """
     extractor = _EXTRACTORS.get(document_type, generic_extractor.extract)
     data = extractor(tokens)
-
+    
+    # If it's a business card, return as-is (no traveller normalization)
+    if document_type == DocumentType.BUSINESS_CARD:
+        return data
+    
+    # Normalize traveller data
     _normalize_dates(data)
     _normalize_gender(data)
     _normalize_names(data)

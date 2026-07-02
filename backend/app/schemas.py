@@ -1,3 +1,4 @@
+# schemas.py
 """Pydantic v2 schemas exposed by the API."""
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ class DocumentType(str, Enum):
     DRIVING_LICENSE = "DRIVING_LICENSE"
     PAN = "PAN"
     VOTER_ID = "VOTER_ID"
+    BUSINESS_CARD = "BUSINESS_CARD"
     GENERIC = "GENERIC"
     UNKNOWN = "UNKNOWN"
 
@@ -79,6 +81,31 @@ class TravellerData(BaseModel):
     additional_fields: Dict[str, FieldValue] = Field(default_factory=dict)
 
 
+# ---------------------------------------------------------------------------
+# Business Card Data (NEW)
+# ---------------------------------------------------------------------------
+class BusinessCardData(BaseModel):
+    """Structured data extracted from a business card."""
+    
+    full_name: Optional[FieldValue] = None
+    company_name: Optional[FieldValue] = None
+    designation: Optional[FieldValue] = None
+    email: Optional[FieldValue] = None
+    mobile_number: Optional[FieldValue] = None
+    office_number: Optional[FieldValue] = None
+    website: Optional[FieldValue] = None
+    address: Optional[FieldValue] = None
+    city: Optional[FieldValue] = None
+    state: Optional[FieldValue] = None
+    country: Optional[FieldValue] = None
+    pin_code: Optional[FieldValue] = None
+    linkedin: Optional[FieldValue] = None
+    qr_code_content: Optional[FieldValue] = None
+    additional_fields: Dict[str, FieldValue] = Field(default_factory=dict)
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ValidationIssue(BaseModel):
     field: str
     severity: str  # ERROR | WARNING | INFO
@@ -106,6 +133,7 @@ class DocumentResult(BaseModel):
     classification_confidence: float = 0.0
     overall_confidence: float = 0.0
     traveller: TravellerData
+    business_card: Optional[BusinessCardData] = None
     ocr_metadata: OCRMetadata
     validation: List[ValidationIssue] = Field(default_factory=list)
     duplicates: List[DuplicateMatch] = Field(default_factory=list)

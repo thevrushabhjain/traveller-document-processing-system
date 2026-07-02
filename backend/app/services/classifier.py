@@ -29,6 +29,41 @@ _DL_NUMBER_RE = re.compile(r"\b[A-Z]{2}[-\s]?\d{1,2}[-\s]?\d{4}[-\s]?\d{6,9}\b")
 _MRZ_LINE1_RE = re.compile(r"P[<K][A-Z<]{2}[A-Z0-9<]{20,}")
 _MRZ_LINE2_RE = re.compile(r"^[A-Z0-9<]{20,}$")
 
+# Business Card patterns
+_EMAIL_RE = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+_PHONE_RE = re.compile(
+    r'(?:\+?\d{1,3}[-.\s]?)?'  # Country code (optional)
+    r'(?:\(?\d{2,3}\)?[-.\s]?)'  # Area/STD code (optional)
+    r'\d{3,4}[-.\s]?'  # Exchange
+    r'\d{3,4}'  # Subscriber
+    r'(?:[-.\s]?\d{3,4})?'  # Extension (optional)
+    r'\b'
+)
+_WEBSITE_RE = re.compile(
+    r'(?:https?://)?'  # Optional protocol
+    r'(?:www\.)?'  # Optional www
+    r'[A-Za-z0-9-]+'  # Domain name
+    r'\.'  # Dot
+    r'(?:com|in|org|net|io|ai|co|uk|us|ca|au|de|fr|jp|cn|br|ru|za|nl|se|no|fi|dk|ch|at|be|nz|sg|hk|my|id|ph|vn|th)'  # TLD
+    r'(?:/[A-Za-z0-9-._~:/?#\[\]@!$&\'()*+,;=]*)?'  # Optional path
+    r'\b'
+)
+_LINKEDIN_RE = re.compile(
+    r'(?:linkedin\.com/in/|linkedin\.com/company/|linkedin\.com/pub/)'
+    r'[A-Za-z0-9-]+'
+    r'\b'
+)
+_QR_RE = re.compile(r'QR|二维码|qrcode', re.IGNORECASE)
+_GST_RE = re.compile(r'\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}\d{1}[A-Z]{1}\d{1}\b')
+
+# Social media patterns
+_SOCIAL_PATTERNS = [
+    r'(?:facebook\.com/|fb\.com/)',
+    r'(?:instagram\.com/|ig\.me/)',
+    r'(?:twitter\.com/|x\.com/)',
+    r'(?:youtube\.com/|youtu\.be/)'
+]
+
 # --- Keyword banks -------------------------------------------------------
 _PASSPORT_KEYWORDS = [
     "passport", "republic of", "nationality", "surname", "given name",
@@ -159,8 +194,148 @@ def _detect_passport_patterns(text: str, compact: str) -> float:
     return score
 
 
+def _detect_business_card(tokens: List[OCRToken]) -> Tuple[bool, float]:
+    """Detect business cards using weighted scoring.
+    
+    Feature weights:
+    - Email: +3
+    - Phone: +2
+    - Website: +2
+    - Designation: +2
+    - Company Name: +2
+    - LinkedIn: +2
+    - QR Code: +5
+    - GST Number: +1
+    - Social Media: +1 each
+    - Layout indicators: +1-2
+    
+    Threshold: >= 8 points = Business Card
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    text = "\n".join(t.text for t in tokens)
+    lower = text.lower()
+    text_lines = [t.text.strip() for t in tokens if t.text.strip()]
+    
+    score = 0
+    indicators = []
+    
+    # Email detection (+3)
+    if _EMAIL_RE.search(text):
+        score += 3
+        indicators.append('email')
+    
+    # Phone detection (+2)
+    if _PHONE_RE.search(text):
+        score += 2
+        indicators.append('phone')
+    
+    # Website detection (+2)
+    if _WEBSITE_RE.search(text):
+        score += 2
+        indicators.append('website')
+    
+    # LinkedIn detection (+2)
+    if _LINKEDIN_RE.search(text):
+        score += 2
+        indicators.append('linkedin')
+    
+    # QR code detection (+5 - strong indicator)
+    if _QR_RE.search(text):
+        score += 5
+        indicators.append('qr_code')
+    
+    # Designation detection (+2)
+    designation_keywords = [
+        'manager', 'director', 'ceo', 'founder', 'consultant', 'engineer',
+        'developer', 'analyst', 'associate', 'lead', 'head', 'vp',
+        'president', 'cto', 'cfo', 'coo', 'partner', 'principal'
+    ]
+    if any(kw in lower for kw in designation_keywords):
+        score += 2
+        indicators.append('designation')
+    
+    # Company name detection (+2)
+    # Check for common company patterns
+    company_indicators = ['inc', 'llc', 'ltd', 'corp', 'pvt', 'company', 'corporation']
+    if any(kw in lower for kw in company_indicators):
+        score += 2
+        indicators.append('company')
+    
+    # Also check for ALL CAPS lines that might be company names
+    for line in text_lines[:3]:
+        words = line.split()
+        if len(words) <= 4 and all(w.isupper() for w in words if len(w) > 1):
+            if not any(kw in line.lower() for kw in ['email', 'phone', 'www']):
+                score += 1
+                indicators.append('company_allcaps')
+    
+    # GST number detection (+1)
+    if _GST_RE.search(text):
+        score += 1
+        indicators.append('gst')
+    
+    # Social media detection (+1 each)
+    social_patterns = [
+        r'(?:facebook\.com/|fb\.com/)',
+        r'(?:instagram\.com/|ig\.me/)',
+        r'(?:twitter\.com/|x\.com/)',
+        r'(?:youtube\.com/|youtu\.be/)'
+    ]
+    for pattern in social_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            score += 1
+            indicators.append('social_media')
+    
+    # Designation with name pattern (+1)
+    for line in text_lines[:5]:
+        lower_line = line.lower()
+        if any(kw in lower_line for kw in ['manager', 'director', 'engineer', 'developer']):
+            words = line.split()
+            if len(words) >= 2:
+                score += 1
+                indicators.append('designation_with_name')
+                break
+    
+    # Check for business card layout indicators (+1)
+    # Multiple short lines (typical of business cards)
+    short_lines = sum(1 for line in text_lines if 5 < len(line.strip()) < 30)
+    if short_lines >= 3:
+        score += 1
+        indicators.append('layout')
+    
+    # Check for contact section pattern (+1)
+    contact_patterns = ['email', 'phone', 'mobile', 'www', 'linkedin']
+    contact_hits = sum(1 for pattern in contact_patterns if pattern in lower)
+    if contact_hits >= 2:
+        score += 1
+        indicators.append('contact_section')
+    
+    # Determine if it's a business card
+    is_business_card = score >= 8
+    
+    # Calculate confidence (cap at 0.95)
+    confidence = min(0.95, 0.3 + (score / 30))
+    
+    if is_business_card:
+        logger.debug(
+            "Business card detected",
+            extra={
+                "score": score,
+                "indicators": indicators,
+                "confidence": round(confidence, 3)
+            }
+        )
+    
+    return is_business_card, confidence if is_business_card else 0.0
+
+
 def classify_tokens(tokens: List[OCRToken]) -> ClassificationResult:
     """Return the most likely document type based on OCR text content."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     text = "\n".join(t.text for t in tokens)
     lower = text.lower()
     compact = text.replace(" ", "")
@@ -171,6 +346,7 @@ def classify_tokens(tokens: List[OCRToken]) -> ClassificationResult:
         "DRIVING_LICENSE": 0.0,
         "PAN": 0.0,
         "VOTER_ID": 0.0,
+        "BUSINESS_CARD": 0.0,
     }
 
     # --- Passport detection with multiple signals ---
@@ -191,6 +367,12 @@ def classify_tokens(tokens: List[OCRToken]) -> ClassificationResult:
         if kw in lower:
             scores["PASSPORT"] += 1.0
 
+    # --- Business Card detection (NEW) ---
+    is_business_card, bc_confidence = _detect_business_card(tokens)
+    if is_business_card:
+        # Scale confidence to score (max 10)
+        scores["BUSINESS_CARD"] += bc_confidence * 10
+
     # --- Other document types (unchanged) ---
     for kw in _AADHAAR_KEYWORDS:
         if kw in lower:
@@ -207,9 +389,9 @@ def classify_tokens(tokens: List[OCRToken]) -> ClassificationResult:
 
     # Structural / pattern signals - weighted higher than keywords
     if _MRZ_PASSPORT_RE.search(compact):
-        scores["PASSPORT"] += 5.0  # This is now redundant with _detect_mrz but kept for safety
+        scores["PASSPORT"] += 5.0
     if _PASSPORT_NUMBER_RE.search(text) and "passport" in lower:
-        scores["PASSPORT"] += 2.0  # Redundant with _detect_passport_patterns but kept for safety
+        scores["PASSPORT"] += 2.0
     
     # Other document patterns (unchanged)
     if _AADHAAR_NUMBER_RE.search(text):
@@ -225,23 +407,33 @@ def classify_tokens(tokens: List[OCRToken]) -> ClassificationResult:
     best_type_str, best_score = max(scores.items(), key=lambda kv: kv[1])
     total = sum(scores.values())
     
-    # --- Enhanced confidence calculation for passports ---
+    # --- Enhanced confidence calculation ---
     if best_type_str == "PASSPORT" and best_score > 0:
         # Boost confidence for passport if MRZ was detected or if multiple signals present
         if has_mrz:
-            # MRZ is a very strong signal
             confidence = min(0.95, 0.6 + (best_score / 20))
         elif best_score >= 5:
-            # Multiple strong signals (keywords + patterns)
             confidence = min(0.85, 0.4 + (best_score / 15))
         else:
-            # Weak signals
             confidence = min(0.7, 0.3 + (best_score / 10))
         
-        # Ensure we don't classify random text as passport
         if best_score < 1.5:
             confidence = 0.0
             best_type_str = "GENERIC"
+    
+    elif best_type_str == "BUSINESS_CARD" and best_score > 0:
+        # Confidence for business cards
+        if best_score >= 8:
+            confidence = min(0.95, 0.6 + (best_score / 20))
+        elif best_score >= 5:
+            confidence = min(0.85, 0.4 + (best_score / 15))
+        else:
+            confidence = min(0.7, 0.3 + (best_score / 10))
+        
+        if best_score < 3:
+            confidence = 0.0
+            best_type_str = "GENERIC"
+    
     else:
         # For other document types, use original logic
         if best_score < 1.5 and not has_mrz:
@@ -250,15 +442,21 @@ def classify_tokens(tokens: List[OCRToken]) -> ClassificationResult:
         confidence = round(min(confidence, 0.99), 4)
     
     # Override if we detected MRZ but classification is not passport
-    # (This handles edge cases where MRZ is detected but other document types have higher scores)
     if has_mrz and best_type_str != "PASSPORT":
-        # If MRZ is present, it's almost certainly a passport
-        # Only override if the other document doesn't have an extremely high score
         other_score = scores.get(best_type_str, 0)
-        if other_score < scores["PASSPORT"] * 0.5:  # If passport score is at least half of other
+        if other_score < scores["PASSPORT"] * 0.5:
             best_type_str = "PASSPORT"
-            # Recalculate confidence for passport
             confidence = 0.90
+    
+    # Log the classification result for debugging
+    logger.debug(
+        "Classification result",
+        extra={
+            "document_type": best_type_str,
+            "confidence": round(confidence, 4),
+            "scores": {k: round(v, 2) for k, v in scores.items() if v > 0}
+        }
+    )
     
     doc_type = DocumentType(best_type_str)
     return ClassificationResult(doc_type, round(min(confidence, 0.99), 4), scores)

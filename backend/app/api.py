@@ -264,13 +264,33 @@ def _process_stored_file(session: Session, stored_path: Path, original_filename:
 
         # --- Stage 3: Parsing ---
         parse_start = time.time()
-        traveller: TravellerData = parse_traveller(all_tokens, classification.document_type)
-        traveller.document_type = classification.document_type
+        parsed_data = parse_traveller(all_tokens, classification.document_type)
         parse_elapsed = time.time() - parse_start
         
         # --- Stage 4: Validation ---
         validate_start = time.time()
-        issues = validate_traveller(traveller)
+        
+        # Only validate traveller documents, not business cards
+        if classification.document_type == DocumentType.BUSINESS_CARD:
+            issues = []
+            # Business cards don't have traveller validation
+            traveller = TravellerData(document_type=classification.document_type)
+            overall_conf = 0.0
+        else:
+            traveller = parsed_data
+            traveller.document_type = classification.document_type
+            issues = validate_traveller(traveller)
+            
+            # Overall confidence for traveller documents
+            field_confidences = [
+                fv.confidence for fv in (
+                    traveller.document_number, traveller.full_name,
+                    traveller.date_of_birth, traveller.date_of_expiry,
+                    traveller.date_of_issue, traveller.gender, traveller.nationality,
+                ) if fv and fv.value
+            ]
+            overall_conf = round(sum(field_confidences) / len(field_confidences), 4) if field_confidences else 0.0
+        
         validate_elapsed = time.time() - validate_start
         
         logger.debug(
@@ -283,33 +303,37 @@ def _process_stored_file(session: Session, stored_path: Path, original_filename:
             }
         )
 
-        # Overall confidence
-        field_confidences = [
-            fv.confidence for fv in (
-                traveller.document_number, traveller.full_name,
-                traveller.date_of_birth, traveller.date_of_expiry,
-                traveller.date_of_issue, traveller.gender, traveller.nationality,
-            ) if fv and fv.value
-        ]
-        overall_conf = round(sum(field_confidences) / len(field_confidences), 4) if field_confidences else 0.0
+        # Persist normalised search columns for duplicate detection (only for traveller docs)
+        if classification.document_type != DocumentType.BUSINESS_CARD:
+            record.document_type = traveller.document_type.value
+            record.document_number = normalize_doc_number(
+                traveller.document_number.value if traveller.document_number else None
+            )
+            record.full_name = traveller.full_name.value if traveller.full_name else None
+            record.normalized_name = normalize_name(record.full_name)
+            record.date_of_birth = traveller.date_of_birth.value if traveller.date_of_birth else None
+            record.classification_confidence = classification.confidence
+            record.overall_confidence = overall_conf
+        else:
+            # For business cards, store minimal info
+            record.document_type = DocumentType.BUSINESS_CARD.value
+            record.classification_confidence = classification.confidence
+            record.overall_confidence = 0.0
+            # Try to extract name for search purposes
+            if hasattr(parsed_data, 'full_name') and parsed_data.full_name:
+                record.full_name = parsed_data.full_name.value
+                record.normalized_name = normalize_name(record.full_name)
 
-        # Persist normalised search columns for duplicate detection
-        record.document_type = traveller.document_type.value
-        record.document_number = normalize_doc_number(
-            traveller.document_number.value if traveller.document_number else None
-        )
-        record.full_name = traveller.full_name.value if traveller.full_name else None
-        record.normalized_name = normalize_name(record.full_name)
-        record.date_of_birth = traveller.date_of_birth.value if traveller.date_of_birth else None
-        record.classification_confidence = classification.confidence
-        record.overall_confidence = overall_conf
         record.ocr_metadata = json.loads(agg_meta.model_dump_json())
         record.processed_at = datetime.now(timezone.utc)
         record.status = ProcessingStatus.COMPLETED.value
 
-        # --- Stage 5: Duplicate detection ---
+        # --- Stage 5: Duplicate detection (only for traveller docs) ---
         dup_start = time.time()
-        duplicates = find_duplicates(session, traveller, exclude_id=doc_id)
+        if classification.document_type != DocumentType.BUSINESS_CARD:
+            duplicates = find_duplicates(session, traveller, exclude_id=doc_id)
+        else:
+            duplicates = []
         dup_elapsed = time.time() - dup_start
         
         if duplicates:
@@ -322,20 +346,39 @@ def _process_stored_file(session: Session, stored_path: Path, original_filename:
                 }
             )
 
-        result = DocumentResult(
-            id=doc_id,
-            filename=original_filename,
-            status=ProcessingStatus.COMPLETED,
-            document_type=traveller.document_type,
-            classification_confidence=classification.confidence,
-            overall_confidence=overall_conf,
-            traveller=traveller,
-            ocr_metadata=agg_meta,
-            validation=issues,
-            duplicates=duplicates,
-            created_at=record.created_at,
-            processed_at=record.processed_at,
-        )
+        # --- Create result based on document type ---
+        if classification.document_type == DocumentType.BUSINESS_CARD:
+            result = DocumentResult(
+                id=doc_id,
+                filename=original_filename,
+                status=ProcessingStatus.COMPLETED,
+                document_type=classification.document_type,
+                classification_confidence=classification.confidence,
+                overall_confidence=0.0,
+                traveller=TravellerData(),  # Empty traveller data
+                business_card=parsed_data,  # Business card data
+                ocr_metadata=agg_meta,
+                validation=issues,
+                duplicates=duplicates,
+                created_at=record.created_at,
+                processed_at=record.processed_at,
+            )
+        else:
+            result = DocumentResult(
+                id=doc_id,
+                filename=original_filename,
+                status=ProcessingStatus.COMPLETED,
+                document_type=traveller.document_type,
+                classification_confidence=classification.confidence,
+                overall_confidence=overall_conf,
+                traveller=traveller,
+                ocr_metadata=agg_meta,
+                validation=issues,
+                duplicates=duplicates,
+                created_at=record.created_at,
+                processed_at=record.processed_at,
+            )
+            
         record.result_json = json.loads(result.model_dump_json())
         session.commit()
 
@@ -350,8 +393,8 @@ def _process_stored_file(session: Session, stored_path: Path, original_filename:
             extra={
                 "doc_id": doc_id,
                 "original_filename": original_filename,
-                "doc_type": traveller.document_type.value,
-                "overall_confidence": overall_conf,
+                "doc_type": result.document_type.value,
+                "overall_confidence": result.overall_confidence,
                 "validation_issues": len(issues),
                 "duplicates": len(duplicates),
                 "total_elapsed_ms": round(total_elapsed * 1000, 2),
@@ -644,6 +687,7 @@ def _row_to_result(row: ProcessedDocument) -> DocumentResult:
                 extra={"doc_id": row.id}
             )
 
+    # Fallback minimal result
     return DocumentResult(
         id=row.id,
         filename=row.filename,

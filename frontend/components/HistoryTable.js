@@ -1,3 +1,4 @@
+// frontend/components/HistoryTable.js
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -6,7 +7,7 @@ import { listDocuments, deleteDocument, jsonDownloadUrl } from '@/lib/api';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { toast } from 'sonner';
 
-const TYPES = ['', 'PASSPORT', 'AADHAAR', 'DRIVING_LICENSE', 'PAN', 'VOTER_ID', 'GENERIC'];
+const TYPES = ['', 'PASSPORT', 'AADHAAR', 'DRIVING_LICENSE', 'PAN', 'VOTER_ID', 'BUSINESS_CARD', 'GENERIC'];
 
 export default function HistoryTable({ onSelect, refreshKey }) {
   const [data, setData] = useState({ total: 0, items: [] });
@@ -42,6 +43,35 @@ export default function HistoryTable({ onSelect, refreshKey }) {
     }
   };
 
+  const getDisplayFields = (item) => {
+    const isBusinessCard = item.document_type === 'BUSINESS_CARD';
+    
+    if (isBusinessCard) {
+      const bc = item.business_card || {};
+      const name = bc.full_name?.value || '—';
+      const company = bc.company_name?.value || '—';
+      const email = bc.email?.value || '—';
+      const phone = bc.mobile_number?.value || bc.office_number?.value || '—';
+      
+      return {
+        primary: name,
+        secondary: company,
+        tertiary: email !== '—' ? email : phone,
+        dateField: '—',
+        docNumber: '—',
+      };
+    }
+    
+    const traveller = item.traveller || {};
+    return {
+      primary: traveller.full_name?.value || '—',
+      secondary: traveller.document_number?.value || '—',
+      tertiary: traveller.date_of_birth?.value || '—',
+      dateField: traveller.date_of_birth?.value || '—',
+      docNumber: traveller.document_number?.value || '—',
+    };
+  };
+
   return (
     <section className="border border-ink bg-white" data-testid="history-section">
       <div className="flex flex-wrap items-center gap-3 border-b border-ink bg-ink px-3 py-2 text-white">
@@ -52,7 +82,7 @@ export default function HistoryTable({ onSelect, refreshKey }) {
           <MagnifyingGlass size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-inkMuted" />
           <input
             data-testid="history-search"
-            placeholder="Search name / number"
+            placeholder="Search name / company / email / number"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && load()}
@@ -82,7 +112,7 @@ export default function HistoryTable({ onSelect, refreshKey }) {
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-border bg-surfaceMuted">
-              {['Filename', 'Type', 'Number', 'Name', 'DOB', 'Confidence', ''].map((h) => (
+              {['Filename', 'Type', 'Name', 'Company / Number', 'Email / DOB', 'Confidence', ''].map((h) => (
                 <th key={h} className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-inkSecondary">
                   {h}
                 </th>
@@ -96,45 +126,56 @@ export default function HistoryTable({ onSelect, refreshKey }) {
             {!loading && data.items.length === 0 && (
               <tr><td colSpan={7} className="px-3 py-6 text-center font-mono text-[11px] text-inkMuted">No processed documents yet.</td></tr>
             )}
-            {data.items.map((it) => (
-              <tr
-                key={it.id}
-                onClick={() => onSelect?.(it)}
-                className="cursor-pointer border-b border-border hover:bg-surfaceMuted"
-                data-testid={`history-row-${it.id}`}
-              >
-                <td className="px-3 py-2 font-mono text-xs">{it.filename}</td>
-                <td className="px-3 py-2 font-mono text-[11px]">
-                  <span className="border border-ink px-1.5 py-0.5">{it.document_type}</span>
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{it.traveller?.document_number?.value || '—'}</td>
-                <td className="px-3 py-2 font-mono text-xs">{it.traveller?.full_name?.value || '—'}</td>
-                <td className="px-3 py-2 font-mono text-xs">{it.traveller?.date_of_birth?.value || '—'}</td>
-                <td className="px-3 py-2"><ConfidenceBadge value={it.overall_confidence} dotOnly /></td>
-                <td className="px-3 py-2 text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <a
-                      href={jsonDownloadUrl(it.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="border border-border p-1 hover:border-ink"
-                      title="Download JSON"
-                      data-testid={`history-download-${it.id}`}
-                    >
-                      <DownloadSimple size={12} />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(it.id); }}
-                      className="border border-border p-1 hover:border-confLow hover:text-confLow"
-                      title="Delete"
-                      data-testid={`history-delete-${it.id}`}
-                    >
-                      <Trash size={12} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {data.items.map((it) => {
+              const fields = getDisplayFields(it);
+              const isBusinessCard = it.document_type === 'BUSINESS_CARD';
+              
+              return (
+                <tr
+                  key={it.id}
+                  onClick={() => onSelect?.(it)}
+                  className="cursor-pointer border-b border-border hover:bg-surfaceMuted"
+                  data-testid={`history-row-${it.id}`}
+                >
+                  <td className="px-3 py-2 font-mono text-xs">{it.filename}</td>
+                  <td className="px-3 py-2 font-mono text-[11px]">
+                    <span className="border border-ink px-1.5 py-0.5">{it.document_type}</span>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {fields.primary}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {fields.secondary}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {fields.tertiary}
+                  </td>
+                  <td className="px-3 py-2"><ConfidenceBadge value={it.overall_confidence} dotOnly /></td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <a
+                        href={jsonDownloadUrl(it.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="border border-border p-1 hover:border-ink"
+                        title="Download JSON"
+                        data-testid={`history-download-${it.id}`}
+                      >
+                        <DownloadSimple size={12} />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(it.id); }}
+                        className="border border-border p-1 hover:border-confLow hover:text-confLow"
+                        title="Delete"
+                        data-testid={`history-delete-${it.id}`}
+                      >
+                        <Trash size={12} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
