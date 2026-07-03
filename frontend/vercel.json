@@ -3,7 +3,4 @@
   "buildCommand": "yarn build",
   "devCommand": "yarn dev",
   "installCommand": "yarn install",
-  "env": {
-    "NEXT_PUBLIC_API_BASE_URL": "@traveldocs_api_base_url"
-  }
 }
