@@ -27,6 +27,9 @@ async def lifespan(app: FastAPI):  # noqa: D401
         "Starting %s v%s (debug=%s, ocr_langs=%s)",
         settings.app_name, settings.app_version, settings.debug, settings.ocr_language_list,
     )
+    import os
+
+    print("PORT =", os.getenv("PORT"))
     init_db()
     settings.upload_path  # ensures dir exists
     settings.output_path
