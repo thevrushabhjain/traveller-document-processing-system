@@ -3,7 +3,7 @@
 // URL (this environment's ingress routes any `/api/*` path straight to
 // the backend regardless of which host served the frontend page).
 
-const BASE = "http://127.0.0.1:8000";
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 async function _handle(res) {
   if (!res.ok) {
