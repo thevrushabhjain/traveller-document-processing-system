@@ -9,5 +9,5 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN yarn build
-EXPOSE 3000
-CMD ["yarn", "start:prod"]
+EXPOSE ${PORT}
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
