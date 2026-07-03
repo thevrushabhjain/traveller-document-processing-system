@@ -1,6 +1,1 @@
-{
-  "framework": "nextjs",
-  "buildCommand": "yarn build",
-  "devCommand": "yarn dev",
-  "installCommand": "yarn install",
-}
+
